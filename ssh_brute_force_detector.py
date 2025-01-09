@@ -16,6 +16,7 @@ def parse_auth_log(file_path, threshold):
                     ip = match.group()
                     attempts[ip][date] += 1
 
+    # Filter by threshold
     results = {}
     for ip, dates in attempts.items():
         for date, count in dates.items():
@@ -27,11 +28,11 @@ def parse_auth_log(file_path, threshold):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python3 ssh_brute_force_detector.py <threshold>")
+        print("Usage: python3 ssh_brute_force_detector.py <threshold> <auth_log_path>")
         sys.exit(1)
 
     threshold = int(sys.argv[1])
-    log_path = ".\\auth.log"
+    log_path = sys.argv[2]
 
     results = parse_auth_log(log_path, threshold)
     for ip, data in results.items():
