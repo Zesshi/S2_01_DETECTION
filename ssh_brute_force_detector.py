@@ -27,7 +27,7 @@ def parse_auth_log(file_path, threshold):
     return results
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print("Usage: python3 ssh_brute_force_detector.py <threshold> <auth_log_path>")
         sys.exit(1)
 
