@@ -8,7 +8,7 @@ def parse_auth_log(file_path, threshold):
 
     with open(file_path, 'r') as file:
         for line in file:
-            if "Failed password" in line or "Invalid user" in line:
+            if "authentication failure" in line:
                 parts = line.split()
                 date = " ".join(parts[0:2])  # Extract month and day
                 match = ip_pattern.search(line)
