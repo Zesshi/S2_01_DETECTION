@@ -50,6 +50,11 @@ if __name__ == "__main__":
     threshold = int(sys.argv[1])
     time_window = int(sys.argv[2])
     log_path = sys.argv[3]
+    
+    print(f"[+] Starting Brute Force Detector.")
+    print(f"Following Parameters have been set:")
+    print(f"Threshold: {threshold} || Time Window: {time_window} seconds || Log Path: {log_path}")
+    print(f"===================================")
 
     results = parse_auth_log(log_path, threshold, time_window)
     for ip, count in results.items():
