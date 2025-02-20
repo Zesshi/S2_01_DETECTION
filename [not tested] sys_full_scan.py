@@ -25,6 +25,7 @@ import socket
 import subprocess
 import requests
 import json
+import paramiko
 
 try:
     import nmap
@@ -72,7 +73,8 @@ def scan_host(target):
 def check_ssl(target, port=443):
     try:
         result = subprocess.run(["sslscan", f"{target}:{port}"], capture_output=True, text=True)
-        return result.stdout or "No SSL info retrieved."
+        output = result.stdout.strip()
+        return output if output else "[!] No SSL info retrieved."
     except FileNotFoundError:
         return "[!] sslscan not found. Install with 'sudo apt install sslscan'."
     except Exception as e:
@@ -101,26 +103,40 @@ def check_weak_credentials(target, port=22):
     for user in weak_users:
         for password in weak_passwords:
             try:
-                with socket.create_connection((target, port), timeout=2) as s:
-                    s.send(f'{user}\n{password}\n'.encode())
-                    if b'success' in s.recv(1024).lower():
-                        return f'Weak credentials found: {user}/{password}'
-            except:
-                pass
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                client.connect(target, port, username=user, password=password, timeout=3)
+                client.close()
+                return f"Weak credentials found: {user}/{password}"
+            except paramiko.AuthenticationException:
+                print(f"[!] Authentication failed for {user}/{password}")
+                continue  # Move to next attempt
+            except paramiko.ssh_exception.SSHException as e:
+                return f"[!] SSH Error: {str(e)}"
+            except EOFError:
+                return "[!] SSH Error: Connection closed unexpectedly."
+    return "No weak credentials detected."
 
-    return 'No weak credentials detected.'
 
 # Function to perform banner grabbing
-def banner_grab(target, port):
-    try:
-        with socket.create_connection((target, port), timeout=3) as s:
-            banner = s.recv(1024).decode().strip()
-            return banner or "No banner retrieved."
-    except:
-        return "Failed to retrieve banner."
+def banner_grab(target, ports):
+    if isinstance(ports, int):  # If a single port is given, convert it to a list
+        ports = [ports]
+
+    banners = {}
+    for port in ports:
+        try:
+            with socket.create_connection((target, port), timeout=3) as s:
+                banner = s.recv(1024).decode().strip()
+                banners[port] = banner if banner else "No banner retrieved."
+        except Exception as e:
+            banners[port] = f"Failed: {e}"
+
+    return banners
+
 
 # Function to check CVEs via Vulners API
-def check_cves(service, version):
+def check_cves(service, version, max_results=10):
     try:
         response = requests.get(
             'https://vulners.com/api/v3/search/lucene/',
@@ -128,9 +144,22 @@ def check_cves(service, version):
             timeout=5
         )
         data = response.json()
-        return [item['id'] for item in data.get('data', {}).get('search', [])] if data.get('result') == 'OK' else []
-    except:
-        return ["[!] CVE lookup failed."]
+
+        # Debugging: Only print API structure, not the full response
+        print("[DEBUG] Vulners API Response Keys:", list(data.keys()))
+        
+        if 'data' in data and 'search' in data['data']:
+            cve_list = []
+            for item in data['data']['search']:
+                cve_id = item.get('id', 'Unknown ID')
+                title = item.get('title', 'No description')
+                cve_list.append(f"- {cve_id}: {title}")
+            return cve_list if cve_list else ["No CVEs found."]
+        return ["No CVEs found."]
+    
+    except requests.RequestException as e:
+        return [f"[!] CVE lookup failed: {e}"]
+
 
 # Main execution
 def main():
