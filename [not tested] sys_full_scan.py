@@ -118,49 +118,6 @@ def check_weak_credentials(target, port=22):
     return "No weak credentials detected."
 
 
-# Function to perform banner grabbing
-def banner_grab(target, ports):
-    if isinstance(ports, int):  # If a single port is given, convert it to a list
-        ports = [ports]
-
-    banners = {}
-    for port in ports:
-        try:
-            with socket.create_connection((target, port), timeout=3) as s:
-                banner = s.recv(1024).decode().strip()
-                banners[port] = banner if banner else "No banner retrieved."
-        except Exception as e:
-            banners[port] = f"Failed: {e}"
-
-    return banners
-
-
-# Function to check CVEs via Vulners API
-def check_cves(service, version, max_results=10):
-    try:
-        response = requests.get(
-            'https://vulners.com/api/v3/search/lucene/',
-            params={'query': f"{service} {version}"},
-            timeout=5
-        )
-        data = response.json()
-
-        # Debugging: Only print API structure, not the full response
-        print("[DEBUG] Vulners API Response Keys:", list(data.keys()))
-        
-        if 'data' in data and 'search' in data['data']:
-            cve_list = []
-            for item in data['data']['search']:
-                cve_id = item.get('id', 'Unknown ID')
-                title = item.get('title', 'No description')
-                cve_list.append(f"- {cve_id}: {title}")
-            return cve_list if cve_list else ["No CVEs found."]
-        return ["No CVEs found."]
-    
-    except requests.RequestException as e:
-        return [f"[!] CVE lookup failed: {e}"]
-
-
 # Main execution
 def main():
     target_host = input("Enter target host (IP or domain): ")
@@ -177,19 +134,11 @@ def main():
     print("\n[+] Checking weak credentials...")
     weak_creds = check_weak_credentials(target_host)
 
-    print("\n[+] Banner grabbing...")
-    banner = banner_grab(target_host, 80)
-
-    print("\n[+] Checking CVEs for nginx 1.18 (example)...")
-    cve_results = check_cves("nginx", "1.18")
-
     print("\n=== REPORT ===")
     print(json.dumps(scan_results, indent=2))
     print("\nSSL Check:", ssl_results)
     print("\nDirectory Enumeration:", directory_enumeration)
     print("\nWeak Credentials:", weak_creds)
-    print("\nBanner:", banner)
-    print("\nCVE Lookup:", cve_results)
 
 if __name__ == "__main__":
     main()
