@@ -1,69 +1,70 @@
-import pyshark
-import urllib.parse
+#!/usr/bin/env python3
 import sys
+import pyshark
 import base64
-import binascii
+import string
+from urllib.parse import unquote
 
-def decode_param(param):
-    # base64
-    try:
-        decoded = base64.b64decode(param)
-        if decoded.isascii():
-            return decoded.decode('utf-8')
-    except (binascii.Error, UnicodeDecodeError):
-        pass
-    
-    # base32
-    try:
-        decoded = base64.b32decode(param)
-        if decoded.isascii():
-            return decoded.decode('utf-8')
-    except (binascii.Error, UnicodeDecodeError):
-        pass
-    
-    # hex
-    try:
-        decoded = bytes.fromhex(param)
-        if decoded.isascii():
-            return decoded.decode('utf-8')
-    except ValueError:
-        pass
-    
-    # binary
-    try:
-        decoded = bin(int(param, 2)).encode('utf-8')
-        return decoded.decode('utf-8')
-    except ValueError:
-        pass
 
-    return param
+###### Argument Parsing ######
+if len(sys.argv) != 3:
+  print("[-] Require exactly 2 Parameters.")
+  exit()
 
-def extract_http_parameters(pcap_file):
-    cap = pyshark.FileCapture(pcap_file, display_filter="http.request")
-    
-    for pkt in cap:
-        try:
-            if hasattr(pkt, 'http') and hasattr(pkt.http, 'request_uri'):  
-                uri = pkt.http.request_uri
-                
-                params = urllib.parse.parse_qs(urllib.parse.urlparse(uri).query)
-                
-                for key, values in params.items():
-                    for value in values:
-                        decoded_value = decode_param(value)
-                        
-                        print(f"[+] Request URI: {uri}")
-                        print(f"[+] {key}: {decoded_value}")
-                        print("-" * 50)
-        except AttributeError:
-            continue
-    
-    cap.close()
+log_filename = sys.argv[1]
+algorithm = sys.argv[2]
+###########################
+
+
+def decryptCaesar(cipher, key):
+  alphabet = string.ascii_lowercase
+  alphabet += string.ascii_uppercase
+  decrypted_message = ""
+
+  for c in cipher:
+    if c in alphabet:
+      position = alphabet.find(c)
+      new_position = (position - key) % 26
+      new_character = alphabet[new_position]
+      decrypted_message += new_character
+    else:
+      decrypted_message += c
+
+  return decrypted_message
+
+
+def main():
+  print("[+] Starting HTTP Message Filter")
+  cap = pyshark.FileCapture(log_filename, display_filter='http && ip.dst == 146.64.213.83')
+
+  for packet in cap:
+    message = packet.http.get_field_value('request.uri.query.parameter').split("=")[1]
+
+    if algorithm == "plain":
+      print(message)
+    elif algorithm == "base64":
+      print(base64.b64decode(unquote(message)).decode('utf-8'))
+    elif algorithm == "base32":
+      print(base64.b32decode(unquote(message)).decode('utf-8'))
+    elif algorithm == "base16":
+      print(base64.b16decode(message).decode('utf-8'))
+    elif algorithm == "rot7":
+      print(decryptCaesar(message,7))
+    elif algorithm == "rot_custom":
+      offset = int(packet.http.get_field_value('request.uri.query').split("=")[-1])
+      message = packet.http.get_field_value('request.uri.query').split("=")[-2].split("&")[0]
+      print(decryptCaesar(message,offset))
+    elif algorithm == "trith":
+      i = 0
+      exlude = "+" + string.digits
+      plaintext = ""
+      for c in message:
+        if c not in exlude:
+          plaintext += decryptCaesar(c,i)
+          i += 1
+        else:
+          plaintext += c
+      print(plaintext)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("[!] Usage: python3 http_message_filter.py <pcap_file>")
-        sys.exit(1)
-    
-    pcap_file = sys.argv[1]
-    extract_http_parameters(pcap_file)
+  main()
