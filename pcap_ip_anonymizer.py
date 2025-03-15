@@ -9,13 +9,9 @@ def load_pcap(file_path):
 def anonymize_ip(ip):
     return "10." + ".".join(str(int(hashlib.md5(ip.encode()).hexdigest()[i:i+2], 16) % 256) for i in (0, 2, 4))
 
-def mask_smtp_emails(packet):
-    if packet.haslayer(Raw):
-        data = packet[Raw].load.decode(errors="ignore")
-        email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-        data = re.sub(email_pattern, lambda x: x.group(0)[0] + "*****" + x.group(0)[-1], data)
-        packet[Raw].load = data.encode()
-    return packet
+def anonymize_email(content):
+    email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+    return email_pattern.sub(lambda match: hashlib.md5(match.group().encode()).hexdigest()[:10] + "@masked.com", content)
 
 def anonymize_pcap(input_file, output_file, mapping_file):
     packets = load_pcap(input_file)
@@ -33,11 +29,12 @@ def anonymize_pcap(input_file, output_file, mapping_file):
                 
             packet[IP].src = ip_mapping[original_src]
             packet[IP].dst = ip_mapping[original_dst]
-            
-            if packet.haslayer(TCP) and (packet[IP].dst == '25' or packet[IP].src == '25'):
-                packet = mask_smtp_emails(packet)
 
-            if packet.haslayer(TCP):
+            if packet.haslayer(TCP) and packet.haslayer(Raw):
+                raw_data = packet[Raw].load.decode(errors='ignore')
+                anonymized_data = anonymize_email(raw_data)
+                packet[Raw].load = anonymized_data.encode()
+                
                 del packet[IP].chksum
                 del packet[TCP].chksum
     
